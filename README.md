@@ -83,7 +83,7 @@ and enter your selected mail domain name, in our case _supersecure.mydomain.net_
 
 Let's start talking about encryption!
 
-# ENCRYPTION
+# ENCRYPTION
 
 Ok, this step is delicate, so i'll start describing what we're trying to achieve here:
 first i want an encrypted mail store for my mail server, but most important, i want every mail account associated with a gpg public key to asymmetrically encrypt messages, so only the users, with his/her private gpg key, will be able to decrypt and read their messages, plus, in case of server compromised, the attacker will own only a bunch of gpg encrypted texts!
@@ -154,8 +154,7 @@ obviously no problem!
 
 That's all, we now have a password protected encrypted folder for our mail store. If you want to try it, just create some text file inside the plain folder, and you 'll find a new encrypted file inside cipher folder. Any time we want to mount our plain folder, we just use the second command again.
 
-
-# POSTFIX
+# POSTFIX
 
 Postfix is a Mail Transfer Agent (MTA), that is, software that sends and receives emails to and from other computers on the network using the Simple Mail Transfer Protocol (SMTP). And as a reminder:
 
@@ -709,9 +708,9 @@ So Thunderbird, new account, with this settings:
 1.  Your name:          <THE_USER_NAME_OR_WHATEVER>
 2.  Email address:      astronaut57@supersecure.mydomain.net
 3.  Password:           <THE_USER_PASSWORD>
-4.  Incoming:           IMAP        supersecure.mydomain.net        993     SSL/TLS     Normal password
-5.  Outgoing:           SMTP        supersecure.mydomain.net        587     STARTTLS    Normal password
-6.  Username:           astronaut57@supersecure.mydomain.net        astronaut57@supersecure.mydomain.net
+4.  Incoming:           IMAP    |    supersecure.mydomain.net    |    993   |   SSL/TLS   |  Normal password
+5.  Outgoing:           SMTP    |    supersecure.mydomain.net    |    587   |   STARTTLS  |  Normal password
+6.  Username:           astronaut57@supersecure.mydomain.net    |    astronaut57@supersecure.mydomain.net
 
 DONE!
 
@@ -728,7 +727,7 @@ But where is the encryption? Well, we have some more work to do, so next story, 
 # POSTGRAY
 
 
-# OPENDKIM
+# OPENDKIM
 
 
 # SPAMASSASSIN
