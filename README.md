@@ -17,6 +17,8 @@ Table of Contents
    * [Postgray](#postgray)
    * [OpenDKIM](#opendkim)
    * [Spamassassin](#spamassassin)
+   * [FAIL2BAN](#fail2ban)
+   * [Router Settings](#router-settings)
 
 
 # Description
@@ -104,7 +106,7 @@ I'll start with the easy one, encrypt the mail store, and for that we'll use [go
 
 Someone could be asking, why encrypt the mail store if we are going to asymmetrically encrypt every single message with users public gpg keys?
 Well, is actually a redundancy, but let's consider this, on one side we'll learn how to properly configure generic encrypted filesystem in user-space, and on another side, we can consider it as planting some kind of honeypot for possible attackers; imagine someone taking control of our server, with read/write access to our mail store, he/she will rapidly detect the presence of gocryptfs, that, like every filesystem encryption mechanism, is potentially vulnerable to some kind of advanced attacks, so he/she will probably start to try to exploit the gocryptfs vulnerabilities (if your are interested, take a look at this audit [here](https://defuse.ca/audits/gocryptfs.htm)), and after some time, maybe, with some luck, he/she will decrypt the mail store, finding a bunch of asymmetric gpg encrypted messages!!! Wouldn't you like, just in that moment, to see his/her face?
-And to go further, we could plant some other kind of hidden side-channel remote logging system over our encrypted mail store, in order to try to extract information about our potential attacker working on our compromised server, but this is just a little far away from the purposes and skill level of this tutorial, so i'll let this particular point in the hands of the interested enthusiast contributor that will teach us how to implement this properly (thanks in advance!).
+And to go further, we could plant some other kind of hidden side-channel remote logging system over our encrypted mail store, in order to try to extract information about our potential attacker working on our compromised server, but this is just a little far away from the purposes and skill level of this tutorial, so i'll let this particular point in the hands of the interested enthusiastic contributor that will teach us how to implement this properly (thanks in advance!).
 
 ### HOW
 
@@ -216,7 +218,7 @@ Then follow the process:
 
   1.  Use the default vhost filesystem
   2.  Enter your email server domain name: ex. _supersecure.mydomain.net_
-  3.  Enter a contact emails
+  3.  Enter a contact email
   4.  Read and agree to Let's Encrypt Terms of Service (only if you agree)
   5.  Select the _Secure_ option (HTTPS ONLY)
 
@@ -261,7 +263,7 @@ tls_preempt_cipherlist = yes
 policy-spf_time_limit = 3600s
 ```
 
-Now, one trick more to have a even better security, generate new [_Diffie Hellman Keys_](https://en.wikipedia.org/wiki/Diffie%E2%80%93Hellman_key_exchange)
+Now, one trick more to have an even better security, generate new [_Diffie Hellman Keys_](https://en.wikipedia.org/wiki/Diffie%E2%80%93Hellman_key_exchange)
 
 ```bash
 openssl gendh -out /etc/postfix/dh_512.pem -2 512
@@ -320,7 +322,7 @@ The usual first step, install it:
 sudo apt-get install dovecot-core dovecot-imapd dovecot-lmtpd dovecot-pgsql postgresql postfix-pgsql
 ```
 
-As you can see, i've decided to install the dovecot PostgreSQL, and that's because we will use a PostgreSQL database to securely encrypt and store the mail users (our recipients) data.
+As you can see, i've decided to install the dovecot PostgreSQL module, and that's because we will use a PostgreSQL database to securely encrypt and store the mail users data.
 
 Someone could be asking right now, why PostgreSQL and not MySQL or MongoDB or whatever, and the answer is: there is not just one answer!
 So to get to the point fast, let's use a line from [_The Database Hacker's Handbook_](https://www.wiley.com/en-gb/The+Database+Hacker%27s+Handbook%3A+Defending+Database+Servers-p-9780764578014), _"By default, PostgreSQL is probably the most security-aware database available ..."_.
@@ -645,7 +647,7 @@ The form moment then, i see that is a really simple one, really straightforward,
 2.  the pgp public key you want to associate with this mail account, i create a pgp keypair in my machine at home (or my laptop) associated with this new email, and paste here the public key, check
 3.  the password for the account, _*****************************_, check
 
-And that's it, push register button and a message appear that in, let's say, 1 minute, my new email account will be available, with a link to the mail config guide for thunderbird & enigmail. Yes, no checking your email in a browser, this kind of reasonably secure gpg encrypted email account cannot work with the actual browsers security standards. Sound pro!
+And that's it, push register button and a message appear that in, let's say, 1 minute, my new email account will be available, with a link to the mail config guide for thunderbird & enigmail. Yes, no checking your email in a browser, this kind of reasonably secure gpg encrypted email account cannot work with the actual browsers security standards. Sounds pro!
 
 That's it, the user is happy, but let's analyze the server side now, we obtain from the online form all the necessary info to add a new entry in our mailstore database _users_ table, so when the user push the register button, we check all the fields (front-end side) and if all is correct, we call a script to add a new entry in our database. I'm not going to cover here how to do that from the front-end, but i'm going to show how to do it the old fashioned way, from the terminal
 
@@ -710,7 +712,7 @@ So Thunderbird, new account, with this settings:
 3.  Password:           <THE_USER_PASSWORD>
 4.  Incoming:           IMAP    |    supersecure.mydomain.net    |    993   |   SSL/TLS   |  Normal password
 5.  Outgoing:           SMTP    |    supersecure.mydomain.net    |    587   |   STARTTLS  |  Normal password
-6.  Username:           astronaut57@supersecure.mydomain.net    |    astronaut57@supersecure.mydomain.net
+6.  Username:           astronaut57@supersecure.mydomain.net     |    astronaut57@supersecure.mydomain.net
 
 DONE!
 
@@ -719,6 +721,8 @@ If everything went ok, all the config files are correct and the DNS of your serv
 But where is the encryption? Well, we have some more work to do, so next story, [GPGIT](https://gitlab.com/mikecardwell/gpgit)!
 
 # GPGIT
+
+Ok, right now,
 
 
 # AMAVIS
@@ -731,3 +735,9 @@ But where is the encryption? Well, we have some more work to do, so next story, 
 
 
 # SPAMASSASSIN
+
+
+# FAIL2BAN
+
+
+# ROUTER SETTINGS
