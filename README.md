@@ -6,6 +6,7 @@ Table of Contents
 =================
 
    * [Description](#description)
+   * [Sources](#sources)
    * [DNS](#dns)
    * [Encryption](#encription)
       * [ENCRYPT the Mail Store](#encrypt-the-mail-store)
@@ -13,12 +14,15 @@ Table of Contents
       * [SSL / Let's Encrypt](#ssl-lets-encrypt)
    * [Dovecot](#dovecot)
    * [GPGIT](#gpgit)
-   * [Amavis](#amavis)
-   * [Postgray](#postgray)
-   * [OpenDKIM](#opendkim)
-   * [Spamassassin](#spamassassin)
+   * [Anti-Spam](#anti-spam)
+      * [SPF](#spf)
+      * [Amavis](#amavis)
+      * [Postgray](#postgray)
+      * [OpenDKIM](#opendkim)
+      * [Spamassassin](#spamassassin)
    * [FAIL2BAN](#fail2ban)
    * [Router Settings](#router-settings)
+
 
 
 # Description
@@ -37,6 +41,42 @@ And if you're ok with it, then you don't need this tutorial
 
 But in case you are not, good news, i'm going to explain here how to set up an End-to-end encrypted ([E2EE](https://ssd.eff.org/en/glossary/end-end-encryption)) email server, and hosting it in your personal server at home.
 I'm assuming here you know how to configure a reasonably secure server at home, but if you don't, you can check my [Raspbian Secure Server Config Tutorial](https://github.com/d3cod3/raspbian-server) first.
+
+# Sources
+
+This is a list of sources and other articles i've used to learn, prototype and realize what i'll try to explain in detail in this tutorial.
+
+Thanks to all this people for the help and knowledge:
+
+[http://sealedabstract.com/code/nsa-proof-your-e-mail-in-2-hours/](http://sealedabstract.com/code/nsa-proof-your-e-mail-in-2-hours/)
+
+[https://scaron.info/blog/debian-mail-postfix-dovecot.html](https://scaron.info/blog/debian-mail-postfix-dovecot.html)
+
+[https://appbead.com/blog/how-to-setup-mail-server-on-debian-8-jessie-with-postfix-dovecot-1.html](https://appbead.com/blog/how-to-setup-mail-server-on-debian-8-jessie-with-postfix-dovecot-1.html)
+
+[https://appbead.com/blog/how-to-setup-mail-server-on-debian-8-jessie-with-postfix-dovecot-2.html](https://appbead.com/blog/how-to-setup-mail-server-on-debian-8-jessie-with-postfix-dovecot-2.html)
+
+[https://www.digitalocean.com/community/tutorials/how-to-set-up-a-postfix-email-server-with-dovecot-dynamic-maildirs-and-lmtp](https://www.digitalocean.com/community/tutorials/how-to-set-up-a-postfix-email-server-with-dovecot-dynamic-maildirs-and-lmtp)
+
+[https://security.stackexchange.com/questions/81944/perfectly-secure-postfix-mta-smtp-configuration](https://security.stackexchange.com/questions/81944/perfectly-secure-postfix-mta-smtp-configuration)
+
+[https://scaron.info/blog/debian-mail-spf-dkim.html](https://scaron.info/blog/debian-mail-spf-dkim.html)
+
+[https://www.upcloud.com/support/secure-postfix-using-lets-encrypt/](https://www.upcloud.com/support/secure-postfix-using-lets-encrypt/)
+
+[https://gist.github.com/jkullick/bbb36828a1f413abd6b9d6431bafa54b](https://gist.github.com/jkullick/bbb36828a1f413abd6b9d6431bafa54b)
+
+[https://www.void.gr/kargig/blog/2013/11/24/anonymize-headers-in-postfix/](https://www.void.gr/kargig/blog/2013/11/24/anonymize-headers-in-postfix/)
+
+[http://kacangbawang.com/encrypting-stored-email-with-postfix/](http://kacangbawang.com/encrypting-stored-email-with-postfix/)
+
+[https://www.grepular.com/Automatically_Encrypting_all_Incoming_Email](https://www.grepular.com/Automatically_Encrypting_all_Incoming_Email)
+
+[https://www.digitalocean.com/community/tutorials/how-to-install-and-use-postgresql-9-4-on-debian-8](https://www.digitalocean.com/community/tutorials/how-to-install-and-use-postgresql-9-4-on-debian-8)
+
+[https://www.void.gr/kargig/blog/2013/11/24/anonymize-headers-in-postfix/](https://www.void.gr/kargig/blog/2013/11/24/anonymize-headers-in-postfix/)
+
+
 
 # DNS
 
@@ -304,6 +344,9 @@ smtps     inet  n       -       -       -       -       smtpd
   -o smtpd_sasl_auth_enable=yes
   -o smtpd_client_restrictions=permit_sasl_authenticated,reject
   -o milter_macro_daemon_name=ORIGINATING
+
+dovecot   unix  -       n       n       -       -       pipe
+  flags=DRhu user=email:email argv=/usr/lib/dovecot/deliver -f ${sender} -d ${recipient}
 ```
 
 We'll come back later at this file, so study it a little bit and get comfortable with it.
@@ -722,20 +765,261 @@ But where is the encryption? Well, we have some more work to do, so next story, 
 
 # GPGIT
 
-Ok, right now,
+I want to remember something here, maybe i'm repeating but i believe it's important to make it clear, WE ARE NOT building a NSA-proof mail server, the skill level and the infrastructure to try that is far beyond the knowledge available in this tutorial, but, we can say without doubts that our system, if working properly, will maintain at least confidentiality and authenticity of our email service; and if some evil hacker attack us with some 0-day, gaining temporary control over the server, this scheme with automated encryption we are building will keep the contents of all our users mails secret.
+
+So, how we do it?
+
+This is the idea, we'll set up a trigger on every message arriving (at Postfix level) to the server that will call an encryption function, as we have every account related with a pgp public key (nothing dangerous to store public keys on the server), we'll use this key to encrypt the messages, so the message will land automatically encrypted. Only the owner of the account, or the one who control the associated private key, will be able to open and read the content of the messages (remember that this mechanism make impossible to send messages with multiple recipients, so one message at the time).
+
+And how we treat the message sending or the _sent_ folder? Well, we are focusing on security and privacy here, so this mail server will not have the _sent_ folder, for the following reasons:
+
+1.  An obvious and easy one is that we don't know if the recipients, on the other side, use encryption or not, so even if on our side the sent message is safe, on the other side could be stored in plain, so we just lost confidentiality.
+
+2.  Postfix do not differentiate incoming mail from outgoing mail, so everything must be handled in the same hook. Due to that apply the trigger to outgoing email will need saving the _stdin_ content to the filesystem temporarily, and this is vulnerable to forensic recover. This could be partially resolved with encrypted folder/volumes, but there is a bigger problem:
+
+3.  If we want to make changes to the _IMAP_ mailbox, we'll need that mailbox username/password, and there is no way of doing that without store this credentials somewhere on plaintext (remember, we store in our mail user database the email in plain, but we hash with SHA512 the user password). Or else use a "master" account with read/write permission over all the accounts, but this is really counter-productive to what we are trying to do here.
+
+In conclusion, we are not going to have here the typical _sent_ folder with a copy of our sent messages, if we want a copy of something we are sending, we just re-send the message to ourselves. Plus, we can add a filter in Thunderbird, [thunderbird filters](http://write.flossmanuals.net/thunderbird/filters/), to automatically move a message into the _sent_ folder if comes directly from ourselves.
+
+Installation time! We need to install the [Enigmail](https://www.enigmail.net/index.php/en/) plugin on our local machine (and gpg obviously, but if we already created our keypair before, we already have it!), while on the server (if debian) comes preinstalled, so we check the version:
+
+```bash
+gpg --version
+```
+
+```bash
+gpg (GnuPG) 2.1.18
+libgcrypt 1.7.6-beta
+Copyright (C) 2017 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+
+Home: /home/user/.gnupg
+Supported algorithms:
+Pubkey: RSA, ELG, DSA, ECDH, ECDSA, EDDSA
+Cipher: IDEA, 3DES, CAST5, BLOWFISH, AES, AES192, AES256, TWOFISH,
+        CAMELLIA128, CAMELLIA192, CAMELLIA256
+Hash: SHA1, RIPEMD160, SHA256, SHA384, SHA512, SHA224
+Compression: Uncompressed, ZIP, ZLIB, BZIP2
+```
+
+In case your linux distro doesn't come with gpg preinstalled, just install it.
+
+Next, we need to create an unprivileged user for running the encryption scripts:
+
+```bash
+sudo adduser --shell /bin/false --home /var/opt/gpgit --disabled-password --disabled-login --gecos "" gpgit
+```
+
+then set up _gpg_ for this user (if you're not familiar with gpg, you can start [here](https://theprivacyguide.org/tutorials/gpg.html)):
+
+```bash
+sudo mkdir /var/opt/gpgit/.gnupg
+sudo chown gpgit:gpgit /var/opt/gpgit/.gnupg
+sudo chmod 700 /var/opt/gpgit/.gnupg
+# Import the mail users public keys (we import this one, but this must be repeated for each new registered user)
+sudo -u gpgit /usr/bin/gpg --homedir=/var/opt/gpgit/.gnupg --import astronaut57@supersecure.mydomain.net.gpg
+# List all imported keys (you should see the just imported key)
+sudo -u gpgit /usr/bin/gpg --homedir=/var/opt/gpgit/.gnupg/ --list-keys
+# give ultimate trust (5) to the imported key
+sudo -u gpgit /usr/bin/gpg --homedir=/var/opt/gpgit/.gnupg --edit-key astronaut57@supersecure.mydomain.net trust quit
+```
+
+We then install (clone) gpgit script by Mark Cardwell from [here](https://gitlab.com/mikecardwell/gpgit), inside our newly created _gpgit_ user home folder:
+
+```bash
+cd /var/opt/gpgit/
+sudo -u gpgit /usr/bin/git clone https://gitlab.com/mikecardwell/gpgit
+```
+
+If necessary, install the required Perl modules, we are using here the [cpan](https://www.cpan.org/) console:
+
+```bash
+# install cpanminus
+cpan App::cpanminus
+# Now install module.
+cpanm Mail::GnuPG
+# or any others you may be missing
+# cpanm XXX::YYY
+```
+
+And finally a little test:
+
+```bash
+# this should produce a text file with some b64 data, call the command, wait two seconds, then Ctrl-D
+sudo -u gpgit /var/opt/gpgit/gpgit/gpgit.pl astronaut57@supersecure.mydomain.net > /var/opt/gpgit/success
+cat /var/opt/gpgit/success
+```
+
+My output:
+
+```bash
+Content-Type: multipart/encrypted; boundary="----------=_1524436225-25788-0"; protocol="application/pgp-encrypted"
+
+This is a multi-part message in MIME format...
+
+------------=_1524436225-25788-0
+Content-Type: application/pgp-encrypted; name="msg.asc"
+Content-Disposition: inline; filename="msg.asc"
+Content-Transfer-Encoding: 7bit
+
+Version: 1
+------------=_1524436225-25788-0
+Content-Type: application/octet-stream
+Content-Disposition: inline
+Content-Transfer-Encoding: 7bit
+
+-----BEGIN PGP MESSAGE-----
+
+hQIMA6SuSblhzUCkAQ/+M520zEDPEOwmsPmjOS8Sv1teygcLbId5wUEwHgPz3o3r
+teu7UIUXHvVLGVW9zg7ggIaUzMj+XPPhZvmKWLyK2pBNYOjwaBAYTjlB6y6ANs3b
+M2t3/OUzoFRchdY6AVZQGwD+RNvb0pUTrvf4tC8TQBHbdOYojP2qodNVTJ408kxx
+q0qcoYjHz+1L7Qng8uMXSX1LI4PNWcVqG0sBvtiaTUgDDVJb7MA5Ig/EW2V8FB1i
+sTAR13sDJ7VhbCasDUUBhs0x1Y0ssj+LiDd1qkQNgqvePqJ0RikwtQ9OzaZ11o5H
+N/FikujIYUTzoGvR7KBLmGBpUyAwagkbUlJKsGhLNDaSo32dgnz34UBaTxa41GDF
+M3JGuhiIQe7nH9AMavTt4sHc28cmYdqnOOKDA+1dwE6lLOoGQg3IkFlz0cunN8ee
+JVyuC7lUnEKgJJVjRaWQOlzWltwIuQXEitoj33/bMktYtEbRydRSwvM2ajmpgEyF
+U0lTr/yz/PdfBk/kPrezPIAJFMWDun58Vi+VJemvCsOxgi7e0MwrEpe4u9ap1SKf
+g2zEXovVlPFldapqFztSjLKIlskompXQbSs4IaF4ciMXatRUNpzIFICUFMw/Cd4T
+G2N9Kq5f4hGdskbb5PVAqWXvy8m7zH3pIrQaPQHJAFbAh99Ull4w4LCaEGUjI9bS
+PAGEAqNYGUUuvN+srtVtj/ciMMET2VvPoA0BuiVzbD7XZqdF2jlf6fL8JAQ3zls2
+CHUR7ahLHVffgqHqPA==
+=h9sJ
+-----END PGP MESSAGE-----
+
+------------=_1524436225-25788-0--
+```
+
+It's working, **gpgit** Perl script from Mike Cardwell automatically use the email address provided, to look up the public key that the message will be encrypted with.
+
+Almost finished, we just need now to trigger this script on arriving mail in Postfix, and basically this is just a filter over the incoming messages, not so different to the spam filters that we'll implement later, in this case encrypting the content of the message before delivery.
+
+Postfix then, but we need here to clarify something about how we achieve this; the Postfix mechanics doesn't let us apply some content filter to incoming messages only, if we setup some filter, it will be applied to all messages, incoming and outgoing. So far so good, the gpgit script search for local installed gpg public keys, so the only keys available will be the ones related with users accounts, so the only messages encrypted will be the ones with a local mail user as recipients, meaning incoming messages only! We let on the client side the possible encryption of outgoing messages, using the common (and user friendly) mechanism through the enigmail plugin.
+And a last detail, while the message will be encrypted, headers (from:, time:, and more metadata) and subject of the message will not, so later we'll add some sort of anonymization of message headers, but let just finish the encryption part first.
+
+We open again the _/etc/postfix/master.cf_ Postfix config file
+
+```bash
+sudo nano /etc/postfix/master.cf
+```
+
+and add _-o content_filter=gpgit-pipe_ to the specified blocks (smtp, smtps, submission)
+
+```bash
+smtp      inet  n       -       -       -       -       smtpd
+  -o content_filter=gpgit-pipe
+
+submission       inet    n       -       n       -       -       smtpd
+  -o content_filter=gpgit-pipe
+
+smtps     inet  n       -       -       -       -       smtpd
+  -o content_filter=gpgit-pipe
+```
+
+and at the end we add our hook
+
+```bash
+gpgit-pipe unix -     n       n       -       -       pipe
+  flags=Rq user=gpgit argv=/var/opt/gpgit/gpgit_postfix.sh -oi -f ${sender} ${recipient}
+```
+
+Save it and close it. Now we need to create the _gpgit_postfix.sh_ script to finally get the job done!
+
+Create the new file
+
+```bash
+sudo -u gpgit nano /var/opt/gpgit/gpgit_postfix.sh
+```
+
+with the following contents
+
+```bash
+#!/bin/bash
+
+SENDMAIL=/usr/sbin/sendmail
+GPGIT=/var/opt/gpgit/gpgit/gpgit.pl
+
+#encrypt and resend directly from stdin
+set -o pipefail
+
+${GPGIT} "$4" |  ${SENDMAIL} "$@"
+
+exit $?
+```
+
+save & close it, and change the file permission to 755
+
+```bash
+sudo chmod 755 /var/opt/gpgit/gpgit_postfix.sh
+```
+
+At this point, we should have everything tuned, restart Postfix service
+
+```bash
+sudo service postfix restart
+```
+
+And try to send an email to your brand new email account _astronaut57@supersecure.mydomain.net_, if everything is correct, thunderbird will ask for your private key password to decrypt your incoming message (client side).
+
+This chapter is not a walk in the park, as they say, so if you want some more technical details, or just more info about that, here you'll find the original article from which i've extracted this part of the tutorial: [Encrypting Stored Email with Postfix](http://kacangbawang.com/encrypting-stored-email-with-postfix/)
+
+Next story, anti-spam chicanery!
+
+# Anti-Spam
+
+Well, yes, email use to go hand by hand with spam, their relationship has grown exponentially over the years, and all the ecosystems around email are filled with various anti-spam hacks and workarounds.
+The combination of tools we are going to use here for our mail server is, at the moment of writing (April 2018), pretty solid and well tested, we will try at the end a direct anti-spam quality test over our mail server using [MailTester](https://www.mail-tester.com/) spam test, and i've used this combination in my personal mail server for almost a year with 0 spam issues, yes, ZERO!
+This coupled with properly configured jails in [Fail2ban](#fail2ban) will give us a solid system protected from spammers.
+But first of all, we'll need to not be considered spammers ourselves, we'll start then with SPF!
+
+## SPF
+
+Sender Policy Framework (SPF) is one of the two services you should configure in order not to be considered as a spammer by major e-mail service providers.
+
+So install it:
+
+```bash
+sudo apt-get install postfix-policyd-spf-python
+```
+
+edit the postfix _/etc/postfix/master.cf_ config file
+
+```bash
+sudo nano /etc/postfix/master.cf
+```
+
+and add this
+
+```bash
+policy-spf  unix  -       n       n       -       -       spawn
+     user=nobody argv=/usr/bin/policyd-spf
+```
+
+And that's it, we already setup a SPF record in our DNS at the beginning of this tutorial, so we are good to go to the next story, Amavis!
+
+## AMAVIS
+
+... soon
+
+## POSTGRAY
+
+... soon
+
+## OPENDKIM
+
+DomainKeys Identified Mail (DKIM) is the other service you need to configure in order not to be considered as a spammer by big e-mail providers. It ties your e-mail server to your domain name, so that receivers can check that e-mails originating from your domain indeed correspond to your computer. So we'll use [opendkim](http://www.opendkim.org/) for this; as always, install it:
+
+```bash
+sudo apt-get install opendkim opendkim-tools
+```
+
+....... to be continued
 
 
-# AMAVIS
+## SPAMASSASSIN
 
-
-# POSTGRAY
-
-
-# OPENDKIM
-
-
-# SPAMASSASSIN
-
+... soon
 
 # FAIL2BAN
 
