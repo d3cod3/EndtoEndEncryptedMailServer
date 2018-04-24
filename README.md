@@ -20,6 +20,7 @@ Table of Contents
       * [Postgray](#postgray)
       * [OpenDKIM](#opendkim)
       * [Spamassassin](#spamassassin)
+   * [Anonymize headers](#anonymize-headers)
    * [FAIL2BAN](#fail2ban)
    * [Router Settings](#router-settings)
 
@@ -82,7 +83,7 @@ Thanks to all this people for the help and knowledge:
 
 So, we'll start with the DNS records, and obviously we need a domain, we can buy one through some hosting platform, or we can obtain one for free (with some limitations, on the name for example). Take a look at [FreeDNS](https://freedns.afraid.org/) if you want to learn more about free DNS hosting and domain hosting.
 So we'll use here an example domain called _supersecure.mydomain.net_, and just to avoid confusion, a possible mail address could be:
-_amazinguser@supersecure.mydomain.net_.
+_astronaut57@supersecure.mydomain.net_.
 We are using here a different subdomain to avoid the disruption of the standard mail service usually packed with standard hosting services, for example _mymail@mydomain.net_, so we will maintain the standard mail service on our domain and add a new super-secure encrypted one on a subdomain.
 When we have our domain, we'll just need to configure it to point to our public IP address:
 
@@ -109,7 +110,7 @@ supersecure           TXT     v=DMARC1; p=none
 _dmarc.supersecure    TXT     v=DMARC1; p=none
 ```
 
-Regarding the **YOUR_DKIM_KEY** field, we'll work on that later, when configuring OpenDKIM (Domain Keys Identified Mail sender authentication system), so you can wait for that, or jump to the section and close the DNS records config right now, your choice!
+Regarding the **YOUR_DKIM_KEY** field, we'll work on that later, when configuring [OpenDKIM](#opendkim) (Domain Keys Identified Mail sender authentication system), so you can wait for that, or jump to the section and close the DNS records config right now, your choice!
 
 That's a standard scenario, fell free to customize yours!
 
@@ -294,7 +295,7 @@ smtpd_tls_security_level = may
 
 smtpd_banner = $myhostname ESMTP
 
-smtpd_recipient_restrictions = permit_mynetworks, reject_invalid_hostname, reject_non_fqdn_hostname, reject_non_fqdn_sender, reject_rbl_client sbl.spamhaus.org, reject_unknown_sender_domain, reject_unknown_recipient_domain, permit_sasl_authenticated, reject_unauth_destination, check_policy_service unix:private/policy-spf
+smtpd_recipient_restrictions = permit_mynetworks, reject_invalid_hostname, reject_non_fqdn_hostname, reject_non_fqdn_sender, reject_rbl_client sbl.spamhaus.org, reject_unknown_sender_domain, reject_unknown_recipient_domain, permit_sasl_authenticated, reject_unauth_destination
 smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated defer_unauth_destination
 
 tls_medium_cipherlist = AES128+EECDH:AES128+EDH
@@ -896,7 +897,7 @@ It's working, **gpgit** Perl script from Mike Cardwell automatically use the ema
 Almost finished, we just need now to trigger this script on arriving mail in Postfix, and basically this is just a filter over the incoming messages, not so different to the spam filters that we'll implement later, in this case encrypting the content of the message before delivery.
 
 Postfix then, but we need here to clarify something about how we achieve this; the Postfix mechanics doesn't let us apply some content filter to incoming messages only, if we setup some filter, it will be applied to all messages, incoming and outgoing. So far so good, the gpgit script search for local installed gpg public keys, so the only keys available will be the ones related with users accounts, so the only messages encrypted will be the ones with a local mail user as recipients, meaning incoming messages only! We let on the client side the possible encryption of outgoing messages, using the common (and user friendly) mechanism through the enigmail plugin.
-And a last detail, while the message will be encrypted, headers (from:, time:, and more metadata) and subject of the message will not, so later we'll add some sort of anonymization of message headers, but let just finish the encryption part first.
+And a last detail, while the message will be encrypted, headers (from:, time:, and more metadata) will not, so later we'll add some sort of anonymization of message headers, but let just finish the encryption part first.
 
 We open again the _/etc/postfix/master.cf_ Postfix config file
 
@@ -962,6 +963,8 @@ sudo service postfix restart
 
 And try to send an email to your brand new email account _astronaut57@supersecure.mydomain.net_, if everything is correct, thunderbird will ask for your private key password to decrypt your incoming message (client side).
 
+The beauty of this piped construct (the script in _/var/opt/gpgit/gpgit_postfix.sh_) is in that the message body is never saved as a file on the mail server disk. If it was, it could potentially be recovered via forensic disk analysis, which is undesirable.
+
 This chapter is not a walk in the park, as they say, so if you want some more technical details, or just more info about that, here you'll find the original article from which i've extracted this part of the tutorial: [Encrypting Stored Email with Postfix](http://kacangbawang.com/encrypting-stored-email-with-postfix/)
 
 Next story, anti-spam chicanery!
@@ -969,7 +972,7 @@ Next story, anti-spam chicanery!
 # Anti-Spam
 
 Well, yes, email use to go hand by hand with spam, their relationship has grown exponentially over the years, and all the ecosystems around email are filled with various anti-spam hacks and workarounds.
-The combination of tools we are going to use here for our mail server is, at the moment of writing (April 2018), pretty solid and well tested, we will try at the end a direct anti-spam quality test over our mail server using [MailTester](https://www.mail-tester.com/) spam test, and i've used this combination in my personal mail server for almost a year with 0 spam issues, yes, ZERO!
+The combination of tools we are going to use here for our mail server is, at the moment of writing (April 2018), pretty solid and well tested, we will try at the end a quality test over our mail server using [MailTester](https://www.mail-tester.com/) spam test, and i've used this combination in my personal mail server for almost a year with 0 spam issues, yes, ZERO!
 This coupled with properly configured jails in [Fail2ban](#fail2ban) will give us a solid system protected from spammers.
 But first of all, we'll need to not be considered spammers ourselves, we'll start then with SPF!
 
@@ -996,15 +999,109 @@ policy-spf  unix  -       n       n       -       -       spawn
      user=nobody argv=/usr/bin/policyd-spf
 ```
 
+Then, modify this line in _/etc/postfix/main.cf_
+
+```bash
+smtpd_recipient_restrictions = permit_mynetworks, reject_invalid_hostname, reject_non_fqdn_hostname, reject_non_fqdn_sender, reject_rbl_client sbl.spamhaus.org, reject_unknown_sender_domain, reject_unknown_recipient_domain, permit_sasl_authenticated, reject_unauth_destination, check_policy_service unix:private/policy-spf
+```
+
+as you can see, we added at the end _check_policy_service unix:private/policy-spf_, to activate the SPF policy in Postfix.
+
 And that's it, we already setup a SPF record in our DNS at the beginning of this tutorial, so we are good to go to the next story, Amavis!
 
 ## AMAVIS
 
-... soon
+[Amavis](https://amavis.org/) is a high-performance and reliable interface between mailer (MTA) and one or more content checkers: virus scanners, and/or Mail::SpamAssassin Perl module.
+
+As always
+
+```bash
+sudo apt-get install amavisd-new
+```
+
+Then the config, first we need to tell Postfix about our content filter
+
+```bash
+sudo nano /etc/postfix/main.cf
+```
+
+add this
+
+```bash
+content_filter = amavis:[127.0.0.1]:10024
+```
+
+save it and open _/etc/postfix/master.cf_
+
+```bash
+sudo nano /etc/postfix/master.cf
+```
+
+and add this block
+
+```bash
+amavis           unix    -       -       -       -       2       smtp
+  -o smtp_send_xforward_command=yes
+  -o smtp_tls_security_level=none
+```
+
+Save it and restart Postfix
+
+```bash
+sudo service postfix restart
+```
+
+Then the last one, open _/etc/amavis/conf.d/20-debian_defaults_ file
+
+```bash
+sudo nano /etc/amavis/conf.d/20-debian_defaults
+```
+
+and make this line looks like this
+
+```bash
+$inet_socket_bind = '127.0.0.1';
+```
+
+That's was easy! So next one, Postgray!
 
 ## POSTGRAY
 
-... soon
+[Postgrey](http://postgrey.schweikert.ch/) is a Postfix policy server implementing greylisting developed by [David Schweikert](http://david.schweikert.ch/).
+
+Install it
+
+```bash
+sudo apt-get install postgrey
+```
+
+Then edit his config file _/etc/default/postgrey_
+
+```bash
+sudo nano /etc/default/postgrey
+```
+
+and edit this line as follows
+
+```bash
+POSTGREY_OPTS="--inet=10023 --delay=30"
+```
+
+Ok, now we need to tell Postfix to use Postgray, edit the usual _/etc/postfix/main.cf_ file and modify this line
+
+```bash
+smtpd_recipient_restrictions = permit_mynetworks, reject_invalid_hostname, reject_non_fqdn_hostname, reject_non_fqdn_sender, reject_rbl_client sbl.spamhaus.org, reject_unknown_sender_domain, reject_unknown_recipient_domain, permit_sasl_authenticated, reject_unauth_destination, check_policy_service inet:[127.0.0.1]:10023, check_policy_service unix:private/policy-spf
+```
+
+adding _check_policy_service inet:[127.0.0.1]:10023_ just before the SPF policy check
+
+restart Postfix as usual
+
+```bash
+sudo service postfix restart
+```
+
+and jump to the next one, OpenDKIM!
 
 ## OPENDKIM
 
@@ -1014,14 +1111,123 @@ DomainKeys Identified Mail (DKIM) is the other service you need to configure in 
 sudo apt-get install opendkim opendkim-tools
 ```
 
-....... to be continued
+DKIM is based on asymmetric cryptography. Basically, we will generate a pair of public/private keys on your server, and publish the public key on your DNS records (remember the beginning of the tutorial?).
 
+So, first we edit _/etc/opendkim.conf_
+
+```bash
+sudo nano /etc/opendkim.conf
+```
+
+and we make sure it contains what follows
+
+```bash
+Syslog                  yes
+
+UMask                   002
+
+AutoRestart             Yes
+AutoRestartRate         10/1h
+SyslogSuccess           Yes
+LogWhy                  Yes
+
+Canonicalization        relaxed/simple
+
+ExternalIgnoreList      refile:/etc/opendkim/TrustedHosts
+InternalHosts           refile:/etc/opendkim/TrustedHosts
+KeyTable                refile:/etc/opendkim/KeyTable
+SigningTable            refile:/etc/opendkim/SigningTable
+
+Mode                    sv
+PidFile                 /var/run/opendkim/opendkim.pid
+SignatureAlgorithm      rsa-sha256
+
+UserID                  opendkim:opendkim
+
+Socket                  inet:12345@localhost
+```
+
+Then we edit _/etc/opendkim/TrustedHosts_ and we make sure it contains all our domains, hostnames or IP addresses
+
+```bash
+127.0.0.1
+localhost
+*.supersecure.mydomain.net
+```
+
+next, we tell Postfix to connect with OpenDKIM, we open _/etc/postfix/main.cf_ and add this:
+
+```bash
+# DKIM
+milter_default_action = accept
+milter_protocol = 6
+smtpd_milters = inet:localhost:12345
+non_smtpd_milters = inet:localhost:12345
+```
+
+good, now we need to generate a keypair for our server:
+
+```bash
+sudo mkdir /etc/opendkim/keys/<supersecure.mydomain.net>
+sudo chown opendkim:opendkim -R /etc/opendkim/keys/<supersecure.mydomain.net>
+cd /etc/opendkim/keys/<supersecure.mydomain.net>
+sudo opendkim-genkey -s default -d <supersecure.mydomain.net>
+sudo chown opendkim:opendkim /etc/opendkim/keys/<supersecure.mydomain.net>/default.private
+```
+
+Keypair created, now we add the key to _/etc/opendkim/KeyTable_
+
+```bash
+default._domainkey.<supersecure.mydomain.net> <supersecure.mydomain.net>:default:/etc/opendkim/keys/<supersecure.mydomain.net>/default.private
+```
+
+and don't forget to change _<supersecure.mydomain.net>_ with your real domain (and cut the < > !!!)
+
+ok, last one, in _/etc/opendkim/SigningTable_ file, we add this:
+
+```bash
+*@<supersecure.mydomain.net> default._domainkey.<supersecure.mydomain.net>
+```
+
+With everything saved, restart Postfix and we have it
+
+```bash
+sudo service postfix restart
+```
+
+And to finish this chapter, the last thing will be to display our openDKIM DNS generated key, to add it to our **TXT/SPF** record and finally have it properly configured
+
+```bash
+sudo cat /etc/opendkim/keys/<supersecure.mydomain.net>/default.txt
+```
+
+my output (some)
+
+```bash
+default._domainkey	IN	TXT	( "v=DKIM1; h=sha256; k=rsa; "
+	  "p=WT...long hash....niuohefopUgIPUGUVWYF" )  ; ----- DKIM key default for <supersecure.mydomain.net>
+```
+
+And that's it! Wait some time for the DNS to propagate and test it
+
+```bash
+dig default._domainkey.<supersecure.mydomain.net> TXT
+```
+
+Our server is starting to look really good! It's time for our last tool of anti-spam magic, next story [SpamAssassin](https://spamassassin.apache.org/)
 
 ## SPAMASSASSIN
 
 ... soon
 
+# ANONYMIZE HEADERS
+
+... soon
+
 # FAIL2BAN
 
+... soon
 
 # ROUTER SETTINGS
+
+... soon
