@@ -22,6 +22,7 @@ Table of Contents
       * [Spamassassin](#spamassassin)
    * [Anonymize headers](#anonymize-headers)
    * [FAIL2BAN](#fail2ban)
+   * [IPTABLES](#iptables)
    * [Router Settings](#router-settings)
 
 
@@ -1037,12 +1038,16 @@ save it and open _/etc/postfix/master.cf_
 sudo nano /etc/postfix/master.cf
 ```
 
-and add this block
+and add this blocks
 
 ```bash
 amavis           unix    -       -       -       -       2       smtp
   -o smtp_send_xforward_command=yes
   -o smtp_tls_security_level=none
+
+127.0.0.1:10025  inet    n       -       -       -       -       smtpd
+  -o content_filter=
+  -o receive_override_options=no_milters
 ```
 
 Save it and restart Postfix
@@ -1189,10 +1194,11 @@ ok, last one, in _/etc/opendkim/SigningTable_ file, we add this:
 *@<supersecure.mydomain.net> default._domainkey.<supersecure.mydomain.net>
 ```
 
-With everything saved, restart Postfix and we have it
+With everything saved, restart Postfix and opendkim and we have it!
 
 ```bash
 sudo service postfix restart
+sudo service opendkim restart
 ```
 
 And to finish this chapter, the last thing will be to display our openDKIM DNS generated key, to add it to our **TXT/SPF** record and finally have it properly configured
@@ -1211,23 +1217,209 @@ default._domainkey	IN	TXT	( "v=DKIM1; h=sha256; k=rsa; "
 And that's it! Wait some time for the DNS to propagate and test it
 
 ```bash
-dig default._domainkey.<supersecure.mydomain.net> TXT
+dig <supersecure.mydomain.net> TXT
 ```
 
-Our server is starting to look really good! It's time for our last tool of anti-spam magic, next story [SpamAssassin](https://spamassassin.apache.org/)
+Our mail server is starting to look really fine-tuned! It's time for our last tool of anti-spam magic, next story [SpamAssassin](https://spamassassin.apache.org/)
 
 ## SPAMASSASSIN
 
-... soon
+SpamAssassin is a server level filter to avoid junk mails (spam), it's a renowned one and easy to configure.
+
+Install it
+
+```bash
+sudo apt-get install spamassassin spamc
+```
+
+and add it to Postfix as _content_filter_, but we have a little problem here, we already have a _content_filter_ configured in Postfix, we add it with the setup of [GPGIT](#gpgit), and we can't add two _content_filter_.
+
+Anyway, every problem have a solution, and this one is pretty easy to solve, we just need to modify our _gpgit_postfix.sh_ script file, in order to filter the message with SpamAssassin BEFORE encrypting it.
+
+So we open the file and make it look like that:
+
+```bash
+sudo nano /var/opt/gpgit/gpgit_postfix.sh
+```
+
+```bash
+#!/bin/bash
+
+SENDMAIL=/usr/sbin/sendmail
+SPAMASSASSIN=/usr/bin/spamc
+GPGIT=/var/opt/gpgit/gpgit/gpgit.pl
+
+#encrypt and resend directly from stdin
+set -o pipefail
+
+${SPAMASSASSIN} | ${GPGIT} "$4" |  ${SENDMAIL} "$@"
+
+exit $?
+```
+
+save it and the last step, we open _/etc/spamassassin/local.cf_ file and uncomment this line
+
+```bash
+rewrite_header Subject *****SPAM*****
+```
+
+to label spam mails.
+
+We have it!
+
+Form time to time, if you want to update the SpamAssassin database, you can run this command
+
+```bash
+sa-update
+```
+
+and restart SpamAssassin
+
+```bash
+/etc/init.d/spamassassin restart
+```
+
+We are almost finished, just one step more to increase anonymity on our mail server, next story: Anonymize Headers!
 
 # ANONYMIZE HEADERS
 
-... soon
+In Postfix, we can manage to hide the sender originating IP (plus some other stuff), in order to reduce the presence of user information on the server, and this can be achieved using Postfix's _cleanup_service_name_ directive; let's do it!
+
+Install _postfix-pcre_ module
+
+```bash
+sudo apt-get install postfix-pcre
+```
+
+then create a file _/etc/postfix/smtp_header_checks.pcre_ with this content:
+
+```bash
+/^\s*(Received: from)[^\n]*(.*)/ REPLACE $1 [127.0.0.1] (localhost [127.0.0.1])$2
+/^\s*User-Agent/        IGNORE
+/^\s*X-Enigmail/        IGNORE
+/^\s*X-Mailer/          IGNORE
+/^\s*X-Originating-IP/  IGNORE
+```
+
+save&close
+
+Now we edit again the _/etc/postfix/master.cf_ Postfix config file, and add this:
+
+```bash
+-o cleanup_service_name=subcleanup
+```
+
+at the end of _smtp_, _submission_, _smtps_ and _amavis_ blocks, just like this:
+
+```bash
+smtp      inet  n       -       -       -       -       smtpd
+  ........
+  -o cleanup_service_name=subcleanup
+
+submission       inet    n       -       n       -       -       smtpd
+  ........
+  -o cleanup_service_name=subcleanup
+
+smtps     inet  n       -       -       -       -       smtpd
+  ........
+  -o cleanup_service_name=subcleanup
+
+amavis           unix    -       -       -       -       2       smtp
+  ........
+  -o cleanup_service_name=subcleanup
+```
+
+then at the end of the config file we add
+
+```bash
+subcleanup unix n       -       -       -       0       cleanup
+    -o header_checks=pcre:/etc/postfix/smtp_header_checks.pcre
+```
+
+and that's it! We now restart Postfix as always, and if everything is correct, our mail server is perfectly up&running!
+
+We are going to add some security on the next story, using our favorite intrusion prevention software, [Fail2Ban](https://www.fail2ban.org/wiki/index.php/Main_Page)
 
 # FAIL2BAN
 
-... soon
+If you like stuff as set up your own server at home, or this is your field of work, you must probably know really well Fail2Ban software, but if you're not, well, it's time you catch up the good stuff, because intrusion detection systems, nowadays, are more than necessaries.
+
+More of the same, install it
+
+```bash
+sudo apt-get install fail2ban
+```
+
+make a local copy of the configuration file
+
+```bash
+cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
+```
+
+and edit your local copy
+
+```bash
+nano /etc/fail2ban/jail.local
+```
+
+then go down to the _[JAILS]_ section and search for _# Mail servers_ line.
+
+Ok, we need now to activate jails for Postfix, Dovecot y SASL:
+
+```bash
+[postfix]
+
+enabled  = true
+port     = smtp,ssmtp,submission
+filter   = postfix
+logpath  = /var/log/mail.log
+
+
+[sasl]
+
+enabled  = true
+port     = smtp,ssmtp,submission,imap2,imap3,imaps,pop3,pop3s
+filter   = postfix-sasl
+# You might consider monitoring /var/log/mail.warn instead if you are
+# running postfix since it would provide the same log lines at the
+# "warn" level but overall at the smaller filesize.
+logpath  = /var/log/mail.warn
+maxretry = 1
+bantime  = 21600
+
+[dovecot]
+
+enabled = true
+port    = smtp,ssmtp,submission,imap2,imap3,imaps,pop3,pop3s
+filter  = dovecot
+logpath = /var/log/mail.log
+```
+
+Perfect, this is the end of the road, close the config fail and restart fail2ban
+
+```bash
+sudo /etc/init.d/fail2ban restart
+```
+
+Now that our server is running as we want it, properly configured and protected, we can now open the necessary ports on our firewall and on our router, to finally make our mail server visible to the Internet.
+
+Next short stories, _iptables_ and _router settings_
+
+# IPTABLES
+
+Just add this rules to your firewall, adjust them if your not using _iptables_
+
+```bash
+sudo iptables -A INPUT -p tcp -m tcp --dport 25 -j ACCEPT
+sudo iptables -A INPUT -p tcp -m tcp --dport 587 -j ACCEPT
+sudo iptables -A INPUT -p tcp -m tcp --dport 993 -j ACCEPT
+
+sudo iptables -A OUTPUT -p tcp -m tcp --dport 25 -m state --state NEW -j ACCEPT
+sudo iptables -A OUTPUT -p tcp -m tcp --sport 25 -m state --state ESTABLISHED -j ACCEPT
+sudo iptables -A OUTPUT -p tcp -m tcp --dport 587 -m state --state NEW -j ACCEPT
+sudo iptables -A OUTPUT -p tcp -m tcp --sport 587 -m state --state ESTABLISHED -j ACCEPT
+```
 
 # ROUTER SETTINGS
 
-... soon
+open router port 25 (SMTP, to instantiate servers communication), 587 (SUBMISSION, secure send), and 993 (IMAPS over TLS/SSL, secure receive)
