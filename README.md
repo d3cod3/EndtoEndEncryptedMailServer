@@ -24,6 +24,8 @@ Table of Contents
    * [FAIL2BAN](#fail2ban)
    * [IPTABLES](#iptables)
    * [Router Settings](#router-settings)
+   * [Testing](#testing)
+   * [Conclusions](#conclusions)
 
 
 
@@ -1423,3 +1425,21 @@ sudo iptables -A OUTPUT -p tcp -m tcp --sport 587 -m state --state ESTABLISHED -
 # ROUTER SETTINGS
 
 open router port 25 (SMTP, to instantiate servers communication), 587 (SUBMISSION, secure send), and 993 (IMAPS over TLS/SSL, secure receive)
+
+
+# Testing
+
+This is the end of another journey, we can enjoy it, ask ourselves if was worth the hours of work, and if we learned something, important or not, learning can only make us better.
+
+But before let's try a test, a comprehensive one about the spammyness of our mail server, plus a lot of info on how to improve the quality of the service, is (mail tester)[https://www.mail-tester.com/]; i'll let you try yours then, and here you have the result for my mail server, the one identically configured as the tutorial itself
+
+![End-to-end (E2EE) Encrypted Email Server](https://github.com/d3cod3/EndtoEndEncryptedMailServer/tree/master/img/mail_score.jpg)
+
+and just for having something to compare, this is another test from a gmail account (you can try with one if you have it, and you will see the same result)
+
+![Gmail](https://github.com/d3cod3/EndtoEndEncryptedMailServer/tree/master/img/gmail_score.jpg)
+
+
+# Conclusions
+
+...soon
