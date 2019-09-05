@@ -115,7 +115,7 @@ _dmarc.supersecure    TXT     v=DMARC1; p=none
 
 Regarding the **YOUR_DKIM_KEY** field, we'll work on that later, when configuring [OpenDKIM](#opendkim) (Domain Keys Identified Mail sender authentication system), so you can wait for that, or jump to the section and close the DNS records config right now, your choice!
 
-That's a standard scenario, fell free to customize yours!
+That's a standard scenario, feel free to customize yours!
 
 Usually DNS propagation takes a while, so it could be useful to set it at the beginning.
 
