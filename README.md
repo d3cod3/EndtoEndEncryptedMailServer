@@ -3,6 +3,8 @@
 
 [![ko-fi](https://www.ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/V7V21B90C)
 
+[<img src="https://api.gitsponsors.com/api/badge/img?id=103747390" height="20">](https://api.gitsponsors.com/api/badge/link?p=i0jBzM7ci4Y/JAL++n8TXl2Eh+7THk0q1AUTFQcP0MgFwbCTD+gfeXLGLeKjwzoK9TnugoO1oh8ju2a4LpSNsnO1cPgmbE3sbDFg53cCMGL4CcuEH/CzZ+7JjEAXqcAb)
+
 
 Table of Contents
 =================
