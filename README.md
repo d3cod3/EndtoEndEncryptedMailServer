@@ -1,8 +1,6 @@
 
 # End-to-end (E2EE) Encrypted Email Server
 
-[![ko-fi](https://www.ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/V7V21B90C)
-
 
 Table of Contents
 =================
